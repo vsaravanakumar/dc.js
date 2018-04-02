@@ -1057,19 +1057,19 @@ dc.coordinateGridMixin = function (_chart) {
     };
 
     _chart._brushing = function () {
-        var event = d3.event;
-        // Avoids infinite recursion
-        // To ensure that when it is called because of brush.move there is no d3.event.sourceEvent
-        d3.event = null;
-        if (!event.sourceEvent) { return; }
-        var selection = event.selection;
+        // var event = d3.event;
+        // // Avoids infinite recursion
+        // // To ensure that when it is called because of brush.move there is no d3.event.sourceEvent
+        // d3.event = null;
+        // if (!event.sourceEvent) { return; }
+        var selection = d3.event.selection;
         if (selection) {
             selection = selection.map(_chart.x().invert);
         }
 
         selection = _chart.extendBrush(selection);
 
-        _chart.redrawBrush(selection);
+        _chart.redrawBrush(selection, true);
 
         if (_chart.brushIsEmpty(selection)) {
             dc.events.trigger(function () {
@@ -1086,16 +1086,20 @@ dc.coordinateGridMixin = function (_chart) {
         }
     };
 
-    _chart.redrawBrush = function (selection) {
+    _chart.redrawBrush = function (selection, dontSetBrush) {
         if (_brushOn && _gBrush) {
             if (!selection) {
-                _brush.move(_gBrush, null);
+                if (!dontSetBrush) {
+                    _brush.move(_gBrush, null);
+                }
 
                 _brushHandles
                     .attr('display', 'none');
             } else {
                 var scaledSelection = [_x(selection[0]), _x(selection[1])];
-                _brush.move(_gBrush, scaledSelection);
+                if (!dontSetBrush) {
+                    _brush.move(_gBrush, scaledSelection);
+                }
 
                 _brushHandles
                     .attr('display', null)
@@ -1284,39 +1288,33 @@ dc.coordinateGridMixin = function (_chart) {
         }
     }
 
-    // Our zooming is not standard d3 zoom as defined in their examples.
-    // Instead we want to focus the chart based on current zoom transform.
-    // The following code computes values of new domain the same way as transform.rescaleX.
-    // The difference is what we do after we get the newDomain
-    var _zoomTransformToDomain = function (transform, xScale) {
-        return xScale.range().map(function (xCoord) {
-            return _origX.invert(transform.invertX(xCoord));
-        });
-    };
-
-    // _zoomTransformToDomain(transform, xScale) should give back newDomain
-    var _domainToZoomTransform = function (newDomain, origDomain, xScale) {
-        var k = (origDomain[1] - origDomain[0]) / (newDomain[1] - newDomain[0]);
-        var xt = -1 * xScale(newDomain[0]);
+    // find transform for which zoomTransformToDomain(transform, xScale) returns newDomain
+    function domainToZoomTransform (newDomain) {
+        var k = (_xOriginalDomain[1] - _xOriginalDomain[0]) / (newDomain[1] - newDomain[0]);
+        var xt = -1 * _origX(newDomain[0]);
 
         return d3.zoomIdentity.scale(k).translate(xt, 0);
-    };
+    }
 
     // If we changing zoom status (for example by calling focus), tell D3 zoom about it
     function updateD3zoomTransform () {
         if (_zoom) {
-            _zoom.transform(_chart.root(), _domainToZoomTransform(_chart.x().domain(), _xOriginalDomain, _origX));
+            var oldTransform = d3.zoomTransform(_chart.root().node()),
+                newTransform =  domainToZoomTransform(_chart.x().domain());
+            if (oldTransform.toString() !== newTransform.toString()) {
+                _zoom.transform(_chart.root(), newTransform);
+            }
         }
     }
 
     function onZoom () {
-        var event = d3.event;
-        // Avoids infinite recursion
-        // To ensure that when it is called because of programatic zoom there is no d3.event.sourceEvent
-        d3.event = null;
-        if (!event.sourceEvent) { return; }
+        // var event = d3.event;
+        // // Avoids infinite recursion
+        // // To ensure that when it is called because of programatic zoom there is no d3.event.sourceEvent
+        // d3.event = null;
+        // if (!event.sourceEvent) { return; }
 
-        var newDomain = _zoomTransformToDomain(event.transform, _origX);
+        var newDomain = d3.event.transform.rescaleX(_origX).domain();
         _chart.focus(newDomain, false);
     }
 
